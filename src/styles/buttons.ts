@@ -22,7 +22,8 @@ export const buttonStyles = {
     hover:bg-error-700 dark:hover:bg-error-600
     text-white font-medium rounded-lg
     transition-colors duration-200
-  `
+  `,
+  icon: 'inline-flex items-center justify-center'
 };
 
 // Add consistent dark mode classes
