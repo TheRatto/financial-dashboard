@@ -1,102 +1,158 @@
+import type { BankParser } from '../../../types/parser';
+import type { BasicParsedTransaction } from '../../../types/transaction';
 import { TransactionType } from '@prisma/client';
 import { parse } from 'date-fns';
 
-interface BasicParsedTransaction {
-  date: Date;
-  description: string;
-  amount: number;
-  type: TransactionType;
-  balance: number;
-}
-
-export class INGParser {
+export class INGParser implements BankParser {
   name = 'ING';
 
-  canParse(text: string): boolean {
+  private patterns = {
+    date: /(\d{2}\/\d{2}\/\d{4})/,
+    amount: /(-?\$?\d+,?\d*\.\d{2})/g,
+    creditCard: /(Orange One|Rewards Platinum|Credit Card)/i,
+    savings: /(Savings Maximiser|Savings Account)/i,
+    datePattern: /^(\d{2})\/(\d{2})\/(\d{4})/,
+    moneyPattern: /(-?\$?\d+,?\d*\.\d{2})/g
+  };
+
+  async canParse(text: string): Promise<boolean> {
     console.log('\n=== ING Parser Detection ===');
-    console.log('Text length:', text.length);
-    console.log('First 200 characters:', text.substring(0, 200));
     
-    const isING = text.includes('ING');
-    console.log('Contains "ING":', isING);
-    
-    return isING;
-  }
+    const hasING = text.includes('ING') || 
+                   text.includes('Orange One') || 
+                   text.includes('Savings Maximiser');
+    const hasDate = this.patterns.date.test(text);
+    const hasAmount = this.patterns.amount.test(text);
+    const isStatement = hasING && hasDate && hasAmount;
 
-  private cleanDescription(rawDesc: string): string {
-    const descMatch = rawDesc.match(/((?:BPAY Bill Payment|Salary Deposit|Osko (?:Payment|Deposit)|Internal Transfer|Pay Anyone|EFTPOS Purchase|Visa Purchase|Direct Debit|Deposit|Intl (?:Atmpurchase|Transaction Fee)).*?)(?:\s*-\s*Receipt\s*\d+)?$/);
-    return descMatch ? descMatch[1].trim() : '';
-  }
+    console.log('Detection Results:', {
+      hasING,
+      hasDate,
+      hasAmount,
+      firstChars: text.substring(0, 200)
+    });
 
-  private parseTransactionLine(line: string): BasicParsedTransaction | null {
-    const dateRegex = /(\d{2}\/\d{2}\/\d{4})([-]?\d+[,.]?\d+)?([,.]?\d+)?(.*)/;
-    const match = line.match(dateRegex);
-    
-    if (match) {
-      const date = parse(match[1], 'dd/MM/yyyy', new Date());
-      const description = this.cleanDescription(match[4]);
-      const numbers = line.match(/-?\d+[,.]\d+/g);
-      if (numbers && numbers.length >= 2) {
-        const amount = Math.abs(parseFloat(numbers[0].replace(',', '')));
-        const balance = parseFloat(numbers[numbers.length - 1].replace(',', ''));
-        const type = line.startsWith('-') ? TransactionType.DEBIT : TransactionType.CREDIT;
-
-        return {
-          date,
-          description,
-          amount,
-          type,
-          balance
-        };
-      }
-    }
-    return null;
+    return isStatement;
   }
 
   async parse(text: string): Promise<BasicParsedTransaction[]> {
     const transactions: BasicParsedTransaction[] = [];
     const lines = text.split('\n');
-
-    console.log('\n=== ING Parser Starting ===');
-    let lineCount = 0;
-    let dateMatches = 0;
+    const accountType = this.detectAccountType(text);
     
-    for (const line of lines) {
-      lineCount++;
-      
-      if (!line.trim() || line.includes('Date') || line.includes('Description')) {
-        continue;
-      }
+    console.log(`\n=== Starting ING ${accountType} Parser ===`);
+    console.log(`Processing ${lines.length} lines`);
 
-      if (line.match(/^\d{2}\/\d{2}\/\d{4}/)) {
-        dateMatches++;
-        console.log(`\n[Line ${lineCount}] Processing: "${line}"`);
-        console.log('Found date:', line.substring(0, 10));
-        
-        const transaction = this.parseTransactionLine(line);
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine.includes('Interest rate')) continue;
+
+      if (accountType === 'credit') {
+        const transaction = await this.parseCreditCardLine(trimmedLine);
         if (transaction) {
-          transactions.push(transaction);
-          console.log('\nParsed Transaction:');
-          console.log('------------------');
-          console.log(`Date: ${transaction.date.toISOString()}`);
-          console.log(`Description: ${transaction.description}`);
-          console.log(`Amount: ${transaction.amount} (${transaction.type})`);
-          console.log(`Balance: ${transaction.balance}`);
-          console.log('------------------');
+          transactions.push({
+            ...transaction,
+            balance: transaction.balance || 0  // Ensure balance is always provided
+          });
+        }
+      } else {
+        const transaction = await this.parseSavingsLine(trimmedLine);
+        if (transaction) {
+          transactions.push({
+            ...transaction,
+            balance: transaction.balance || 0  // Ensure balance is always provided
+          });
         }
       }
     }
 
-    console.log('\n=== ING Parser Summary ===');
-    console.log('Total lines processed:', lineCount);
-    console.log('Lines with date matches:', dateMatches);
-    console.log('Transactions successfully parsed:', transactions.length);
-
-    if (transactions.length > 0) {
-      console.log('\nFirst transaction:', transactions[0]);
-      console.log('Last transaction:', transactions[transactions.length - 1]);
-    }
+    console.log('\n=== Parsing Summary ===');
+    console.log(`Total lines processed: ${lines.length}`);
+    console.log(`Successful transactions: ${transactions.length}`);
+    console.log(`Account type: ${accountType}`);
 
     return transactions;
+  }
+
+  private detectAccountType(text: string): 'credit' | 'savings' {
+    return this.patterns.creditCard.test(text) ? 'credit' : 'savings';
+  }
+
+  private async parseCreditCardLine(
+    line: string
+  ): Promise<BasicParsedTransaction | null> {
+    const dateMatch = line.match(this.patterns.datePattern);
+    if (!dateMatch) return null;
+
+    const amounts = [...line.matchAll(this.patterns.moneyPattern)]
+      .map(match => this.parseAmount(match[0]));
+    
+    if (amounts.length < 1) return null;
+
+    const amount = amounts[0];
+    const balance = amounts.length > 1 ? amounts[amounts.length - 1] : 0;
+    
+    return {
+      date: new Date(parseInt(dateMatch[3]), parseInt(dateMatch[2]) - 1, parseInt(dateMatch[1])),
+      description: line.replace(dateMatch[0], '').replace(this.patterns.moneyPattern, '').trim(),
+      amount: Math.abs(amount),
+      type: amount >= 0 ? TransactionType.CREDIT : TransactionType.DEBIT,
+      balance
+    };
+  }
+
+  private async parseSavingsLine(line: string): Promise<BasicParsedTransaction | null> {
+    const dateMatch = line.match(this.patterns.date);
+    if (!dateMatch) return null;
+
+    const date = dateMatch[1];
+    let remainingText = line.replace(dateMatch[0], '').trim();
+    const amounts = [...remainingText.matchAll(this.patterns.moneyPattern)].map(match => match[0]);
+
+    if (amounts.length < 1) return null;
+
+    const amount = this.parseAmount(amounts[0]);
+    const balance = amounts.length > 1 ? this.parseAmount(amounts[amounts.length - 1]) : undefined;
+    const description = this.cleanDescription(
+      remainingText.replace(this.patterns.moneyPattern, '').trim(),
+      'savings'
+    );
+
+    return {
+      date: parse(date, 'dd/MM/yyyy', new Date()),
+      description,
+      amount: Math.abs(amount),
+      type: amount >= 0 ? TransactionType.CREDIT : TransactionType.DEBIT,
+      balance: balance || 0
+    };
+  }
+
+  private parseAmount(text: string): number {
+    const cleanText = text.replace(/[$,]/g, '').trim();
+    const amount = parseFloat(cleanText);
+    
+    if (isNaN(amount)) {
+      throw new Error(`Invalid amount format: ${text}`);
+    }
+    
+    return amount;
+  }
+
+  private cleanDescription(description: string, accountType: 'credit' | 'savings'): string {
+    let cleaned = description;
+
+    if (accountType === 'credit') {
+      cleaned = cleaned
+        .replace(/Date \d{2}\/\d{2}\/\d{2}/, '')
+        .replace(/Card \d+/, '')
+        .replace(this.patterns.moneyPattern, '');
+    }
+
+    // Common cleaning
+    cleaned = cleaned
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return cleaned;
   }
 } 

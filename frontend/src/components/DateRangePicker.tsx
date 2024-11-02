@@ -56,11 +56,19 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       <button
         ref={ref}
         onClick={onClick}
-        className="inline-flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+        className="inline-flex items-center justify-between px-3 py-2 
+          w-full border border-gray-300 dark:border-dark-600 
+          rounded-md shadow-sm text-sm font-medium h-[38px]
+          text-gray-700 dark:text-gray-200 
+          bg-white dark:bg-dark-800 
+          hover:bg-gray-50 dark:hover:bg-dark-700 
+          focus:outline-none focus:ring-2 focus:ring-offset-2 
+          focus:ring-primary-500 dark:focus:ring-offset-dark-900
+          transition-colors duration-200"
         style={{ width: '280px' }}
       >
         <div className="inline-flex items-center min-w-0">
-          <CalendarIcon className="h-5 w-5 mr-2 text-gray-400 flex-shrink-0" />
+          <CalendarIcon className="h-5 w-5 mr-2 text-gray-400 dark:text-gray-500 flex-shrink-0" />
           <span className="truncate">
             {startDate && endDate ? (
               <span className="inline-flex items-center">
@@ -78,12 +86,12 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 e.stopPropagation();
                 onChange(null, null);
               }}
-              className="mr-1 p-1 hover:bg-gray-100 rounded-full"
+              className="mr-1 p-1 hover:bg-gray-100 dark:hover:bg-dark-700 rounded-full"
             >
-              <XMarkIcon className="h-4 w-4 text-gray-400" />
+              <XMarkIcon className="h-4 w-4 text-gray-400 dark:text-gray-500" />
             </button>
           )}
-          <ChevronDownIcon className="h-4 w-4 text-gray-400 flex-shrink-0" aria-hidden="true" />
+          <ChevronDownIcon className="h-4 w-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
         </div>
       </button>
     )
@@ -101,18 +109,22 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
         onClick={decreaseMonth}
         disabled={prevMonthButtonDisabled}
         type="button"
-        className="p-1 text-gray-600 hover:text-gray-900 disabled:opacity-50"
+        className="p-1 text-gray-600 dark:text-gray-300 
+          hover:text-gray-900 dark:hover:text-gray-100 
+          disabled:opacity-50"
       >
         <ChevronLeftIcon className="h-4 w-4" />
       </button>
-      <span className="text-sm font-medium text-gray-700">
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
         {format(date, 'MMM yyyy')}
       </span>
       <button
         onClick={increaseMonth}
         disabled={nextMonthButtonDisabled}
         type="button"
-        className="p-1 text-gray-600 hover:text-gray-900 disabled:opacity-50"
+        className="p-1 text-gray-600 dark:text-gray-300 
+          hover:text-gray-900 dark:hover:text-gray-100 
+          disabled:opacity-50"
       >
         <ChevronRightIcon className="h-4 w-4" />
       </button>
@@ -129,7 +141,8 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       border: 1px solid #374151;
       border-radius: 0.5rem;
       background-color: #1f2937;
-      color: #e5e7eb;
+      color: #f3f4f6;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
     
     .react-datepicker__month-container {
@@ -139,7 +152,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
     }
     
     .react-datepicker__month-container + .react-datepicker__month-container {
-      border-left: 1px solid #e5e7eb;
+      border-left: 1px solid #374151;
     }
     
     .react-datepicker__header {
@@ -173,11 +186,12 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       line-height: 2.5rem;
       margin: 0;
       border-radius: 0;
-      color: #e5e7eb;
+      color: #f3f4f6;
     }
     
     .react-datepicker__day:hover {
-      background-color: #374151;
+      background-color: #374151 !important;
+      cursor: pointer;
     }
     
     .react-datepicker__day--selected,
@@ -188,18 +202,24 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       color: white;
     }
     
+    .react-datepicker__day--selected:hover,
+    .react-datepicker__day--range-start:hover,
+    .react-datepicker__day--range-end:hover {
+      background-color: #6d28d9 !important;
+    }
+    
     .react-datepicker__day--in-range {
       background-color: #5b21b6;
-      color: #e5e7eb;
+      color: #f3f4f6;
     }
     
     .react-datepicker__day--in-selecting-range {
-      background-color: #ede9fe;
+      background-color: #4c1d95;
     }
     
     .react-datepicker__day--keyboard-selected {
-      background-color: #ede9fe;
-      color: #6d28d9;
+      background-color: #4c1d95;
+      color: #c4b5fd;
       border-radius: 9999px;
     }
     
@@ -236,7 +256,9 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
           </div>
         )}
       >
-        <div className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-gray-50">
+        <div className="absolute bottom-0 left-0 right-0 
+          border-t border-gray-200 dark:border-dark-700 
+          bg-gray-50 dark:bg-dark-800">
           <div className="grid grid-cols-4 gap-0.5 p-1 max-w-[575px]">
             {quickRanges.map((range, index) => (
               <button
@@ -245,7 +267,9 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                   const { start, end } = range.getValue();
                   onChange(start, end);
                 }}
-                className="text-xs text-gray-700 hover:bg-gray-100 px-1 py-1 rounded-md"
+                className="text-xs text-gray-700 dark:text-gray-200 
+                  hover:bg-gray-100 dark:hover:bg-dark-700 
+                  px-1 py-1 rounded-md"
               >
                 {range.label}
               </button>

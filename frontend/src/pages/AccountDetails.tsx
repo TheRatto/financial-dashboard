@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { PDFUpload } from '../components/PDFUpload/PDFUpload';
 import { buttonStyles, inputStyles, cardStyles } from '../styles';
+import { StatementsList } from '../components/StatementsList';
 
 const BANK_CONFIGS = {
   ing: {
@@ -50,12 +51,26 @@ export default function AccountDetails() {
     enabled: !!id
   });
 
-  const { data: statements = [] } = useQuery({
+  const { data: statements = [], isLoading: statementsLoading, error: statementsError } = useQuery({
     queryKey: ['statements', id],
     queryFn: async () => {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/statements/account/${id}`);
-      if (!response.ok) throw new Error('Failed to fetch statements');
-      return response.json();
+      console.log('Fetching statements for account:', id);
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL}/api/statements/account/${id}`
+      );
+      
+      if (!response.ok) {
+        console.error('Statements fetch failed:', response.status);
+        throw new Error('Failed to fetch statements');
+      }
+      
+      const data = await response.json();
+      console.log('Statements query response:', {
+        status: response.status,
+        data,
+        timestamp: new Date().toISOString()
+      });
+      return data;
     },
     enabled: !!id
   });
@@ -207,9 +222,15 @@ export default function AccountDetails() {
           {/* Upload Section */}
           <div className="px-6 py-5 border-t border-gray-200 dark:border-dark-700">
             <PDFUpload 
+              accountId={id!}
               onUploadSuccess={() => {
+                console.log('Upload success, invalidating queries');
                 queryClient.invalidateQueries({ queryKey: ['statements', id] });
-                queryClient.invalidateQueries({ queryKey: ['account', id] });
+                console.log('Queries invalidated');
+                
+                // Force an immediate refetch
+                queryClient.refetchQueries({ queryKey: ['statements', id] });
+                console.log('Refetch triggered');
               }} 
             />
           </div>
@@ -219,49 +240,27 @@ export default function AccountDetails() {
             <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
               Uploaded Statements
             </h3>
-            <div className="space-y-3">
-              {statements.length === 0 ? (
-                <div className="text-sm text-gray-500 dark:text-gray-400 italic 
-                  bg-gray-50 dark:bg-dark-700 p-4 rounded-lg text-center">
-                  No statements uploaded yet
+            
+            <div className="mt-6">
+              {statementsLoading ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100 mx-auto"></div>
                 </div>
               ) : (
-                statements.map((statement: Statement) => (
-                  <div 
-                    key={statement.id} 
-                    className="flex items-center justify-between p-4 
-                      bg-gray-50 dark:bg-dark-700 
-                      rounded-lg 
-                      hover:bg-gray-100 dark:hover:bg-dark-600 
-                      transition-colors duration-200"
-                  >
-                    <button
-                      onClick={() => navigate(`/transactions?accountId=${id}&startDate=${format(new Date(statement.year, statement.month - 1, 1), 'yyyy-MM-dd')}&endDate=${format(new Date(statement.year, statement.month, 0), 'yyyy-MM-dd')}`)}
-                      className="text-primary-600 dark:text-primary-400 
-                        hover:text-primary-700 dark:hover:text-primary-300 
-                        font-medium"
-                    >
-                      {format(new Date(statement.year, statement.month - 1), 'MMMM yyyy')}
-                    </button>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        Uploaded {format(new Date(statement.createdAt), 'dd MMM yyyy')}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteStatement(statement.id, statement.fileName)}
-                        className="p-2 text-error-600 dark:text-error-400 
-                          hover:text-error-800 dark:hover:text-error-300 
-                          hover:bg-error-50 dark:hover:bg-error-900/50 
-                          rounded-full transition-colors"
-                        title="Delete statement"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                      </button>
+                <>
+                  {statementsError && (
+                    <div className="text-error-600 dark:text-error-400 bg-error-50 dark:bg-error-900/50 p-4 rounded-lg">
+                      Error loading statements: {statementsError.message}
                     </div>
-                  </div>
-                ))
+                  )}
+                  <StatementsList 
+                    statements={statements} 
+                    onDelete={handleDeleteStatement}
+                    onViewTransactions={(statement) => {
+                      navigate(`/transactions?accountId=${id}&startDate=${format(new Date(statement.year, statement.month - 1, 1), 'yyyy-MM-dd')}&endDate=${format(new Date(statement.year, statement.month, 0), 'yyyy-MM-dd')}`);
+                    }}
+                  />
+                </>
               )}
             </div>
           </div>

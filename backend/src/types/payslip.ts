@@ -1,4 +1,5 @@
 export interface PaySlipData {
+  employer: string;
   paymentDate: Date;
   payPeriod: {
     startDate: Date;

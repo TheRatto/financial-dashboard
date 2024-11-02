@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import transactionsRouter from './routes/transactions';
 import statementsRouter from './routes/statements';
 import accountsRouter from './routes/accounts';
+import uploadRouter from './routes/upload';
 
 dotenv.config();
 
@@ -20,7 +21,8 @@ app.use((req, _res, next) => {
   console.log(`${req.method} ${req.path}`, {
     body: req.body,
     query: req.query,
-    params: req.params
+    params: req.params,
+    files: req.files
   });
   next();
 });
@@ -29,6 +31,7 @@ app.use((req, _res, next) => {
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/statements', statementsRouter);
 app.use('/api/accounts', accountsRouter);
+app.use('/api/upload', uploadRouter);
 
 // Error handling middleware
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

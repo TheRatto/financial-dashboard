@@ -1,0 +1,7 @@
+Statement Period: 01/03/2024 to 31/03/2024
+Account: Savings Maximiser
+
+Date        Description                     Amount      Balance
+01/03/2024  SALARY PAYMENT               $2,500.00    $15,500.00
+02/03/2024  TRANSFER TO XX1234           -$500.00     $15,000.00
+03/03/2024  INTEREST PAYMENT               $12.50     $15,012.50 

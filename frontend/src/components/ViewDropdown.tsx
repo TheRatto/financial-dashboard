@@ -23,14 +23,23 @@ export const ViewDropdown: React.FC<ViewDropdownProps> = ({
   const [showPerPageDropdown, setShowPerPageDropdown] = useState(false);
 
   return (
-    <Menu as="div" className="relative inline-block text-left">
+    <Menu as="div" className="relative inline-block text-left w-full">
       {({ close }) => (
         <>
-          <Menu.Button className={`${buttonStyles.secondary} focus:ring-2 focus:ring-offset-2 
-            focus:ring-primary-500 dark:focus:ring-offset-dark-900`}>
-            <EyeIcon className="h-5 w-5 mr-2 text-gray-400 dark:text-gray-500" />
-            View
-            <ChevronDownIcon className="h-4 w-4 ml-1 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+          <Menu.Button className="inline-flex items-center justify-between px-3 py-2 
+            w-full border border-gray-300 dark:border-dark-600 
+            rounded-md shadow-sm text-sm font-medium 
+            text-gray-700 dark:text-gray-200 
+            bg-white dark:bg-dark-800 
+            hover:bg-gray-50 dark:hover:bg-dark-700 
+            focus:outline-none focus:ring-2 focus:ring-offset-2 
+            focus:ring-primary-500 dark:focus:ring-offset-dark-900
+            transition-colors duration-200">
+            <div className="inline-flex items-center min-w-0">
+              <EyeIcon className="h-5 w-5 mr-2 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+              <span className="truncate">View</span>
+            </div>
+            <ChevronDownIcon className="h-4 w-4 ml-1 text-gray-400 dark:text-gray-500 flex-shrink-0" />
           </Menu.Button>
 
           <Transition

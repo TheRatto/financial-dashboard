@@ -2,6 +2,7 @@ import { TransactionType } from '@prisma/client';
 import { parse } from 'date-fns';
 import { INGParser } from './parsers/banks/INGParser';
 import { prisma } from '../db/index';
+import { BankParser } from '../types/parser';
 
 export interface BasicParsedTransaction {
   date: Date;
@@ -9,12 +10,6 @@ export interface BasicParsedTransaction {
   amount: number;
   type: TransactionType;
   balance: number;
-}
-
-export interface BankParser {
-  name: string;
-  canParse: (text: string) => boolean;
-  parse: (text: string) => Promise<BasicParsedTransaction[]>;
 }
 
 export interface ParsedStatement {
@@ -56,7 +51,7 @@ export class StatementParser {
     console.log('\n=== Testing Available Parsers ===');
     for (const p of this.parsers) {
       console.log(`Testing ${p.name} parser...`);
-      const canParse = p.canParse(text);
+      const canParse = await p.canParse(text);
       console.log(`Result: ${canParse ? 'MATCHED' : 'Not matched'}`);
     }
 
@@ -87,7 +82,7 @@ export class StatementParser {
 // Template for new bank parsers
 export abstract class BaseBankParser implements BankParser {
   abstract name: string;
-  abstract canParse(text: string): boolean;
+  abstract canParse(text: string): Promise<boolean>;
   abstract parse(text: string): Promise<BasicParsedTransaction[]>;
 
   protected parseDate(dateStr: string, formatStr: string): Date {
@@ -101,4 +96,4 @@ export abstract class BaseBankParser implements BankParser {
   protected parseAmount(amountStr: string): number {
     return parseFloat(amountStr.replace(/[$,]/g, ''));
   }
-} 
+}

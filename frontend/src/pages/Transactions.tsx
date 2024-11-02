@@ -211,7 +211,7 @@ export function Transactions() {
         </div>
 
         {/* Filters Section */}
-        <div className={`${layout.card.base} ${layout.card.padding} mt-8`}>
+        <div className={`${layout.card.base} ${layout.card.padding}`}>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {/* Date Range */}
             <div className={layout.spacing.element}>
@@ -236,17 +236,42 @@ export function Transactions() {
                 onChange={(newValue) => setSelectedAccounts(newValue as AccountOption[])}
                 placeholder="Search accounts..."
                 classNames={{
-                  control: (state) => inputStyles.select.control(state),
+                  control: (state) => `${inputStyles.select.control(state)} !min-h-[38px] !h-[38px]`,
                   menu: () => inputStyles.select.menu,
                   option: (state) => inputStyles.select.option(state),
                   multiValue: () => badgeStyles.neutral,
                   multiValueLabel: () => typography.body.small,
                   multiValueRemove: () => buttonStyles.icon
                 }}
+                styles={{
+                  control: (base) => ({
+                    ...base,
+                    minHeight: '38px',
+                    height: '38px'
+                  })
+                }}
               />
             </div>
 
-            {/* Similar updates for other filters */}
+            {/* View Dropdown */}
+            <div className={layout.spacing.element}>
+              <label className={forms.label}>View Options</label>
+              <ViewDropdown
+                showArchived={showArchived}
+                setShowArchived={setShowArchived}
+                perPage={perPage}
+                setPerPage={setPerPage}
+              />
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className={layout.spacing.element}>
+              <label className={forms.label}>Sort By</label>
+              <SortDropdown
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+              />
+            </div>
           </div>
         </div>
 

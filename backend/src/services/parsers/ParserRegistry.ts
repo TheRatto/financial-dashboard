@@ -1,28 +1,25 @@
-import { StatementParser } from '../../types/transaction';
+import { BankParser } from '../../types/parser';
 import { INGParser } from './banks/INGParser';
-import { INGCreditParser } from './banks/INGCreditParser';
 
 export class ParserRegistry {
-  private parsers: StatementParser[] = [];
+  private parsers: BankParser[] = [];
 
   constructor() {
-    // Register all bank parsers
-    // Note: Order matters - put more specific parsers first
-    this.registerParser(new INGCreditParser()); // More specific parser
-    this.registerParser(new INGParser());       // More general parser
+    this.registerParser(new INGParser());
   }
 
-  registerParser(parser: StatementParser) {
+  registerParser(parser: BankParser) {
     this.parsers.push(parser);
     console.log(`Registered parser: ${parser.name}`);
   }
 
-  findParser(text: string): StatementParser | null {
+  async findParser(text: string): Promise<BankParser | null> {
     console.log('Looking for suitable parser...');
     
     for (const parser of this.parsers) {
       console.log(`Trying ${parser.name}...`);
-      if (parser.canParse(text)) {
+      const canParse = await parser.canParse(text);
+      if (canParse) {
         console.log(`Found matching parser: ${parser.name}`);
         return parser;
       }

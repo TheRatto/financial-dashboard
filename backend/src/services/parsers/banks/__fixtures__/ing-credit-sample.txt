@@ -1,0 +1,7 @@
+ING Statement Period: 01/03/2024 to 31/03/2024
+Account: Orange One Credit Card
+
+Date        Description                     Amount      Balance
+01/03/2024  PAYMENT RECEIVED              -$500.00    $1,500.00
+02/03/2024  COLES SUPERMARKET              $85.50     $1,585.50
+03/03/2024  NETFLIX SUBSCRIPTION           $15.99     $1,601.49

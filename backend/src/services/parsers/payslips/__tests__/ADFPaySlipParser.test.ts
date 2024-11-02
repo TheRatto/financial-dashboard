@@ -1,5 +1,4 @@
 import { ADFPaySlipParser } from '../ADFPaySlipParser';
-import { PaySlipData } from '../../../../types/payslip';
 
 describe('ADFPaySlipParser', () => {
   const parser = new ADFPaySlipParser();
@@ -74,7 +73,7 @@ Total 3520.95`;
     const result = await parser.parse(samplePaySlip);
     
     // Test the standardized PaySlipData format
-    expect(result.employerName).toBe('Department of Defence');
+    expect(result.employer).toBe('Department of Defence');
     expect(result.grossPay).toBe(7889.67);
     expect(result.netPay).toBe(3520.95);
     expect(result.taxWithheld).toBe(1882.00);
@@ -102,7 +101,7 @@ Total 3520.95`;
     // Log the breakdown for visibility
     console.log('\nPay Period Analysis:');
     console.log('-------------------');
-    console.log('Employer:', result.employerName);
+    console.log('Employer:', result.employer);
     console.log('Pay Period:', 
       result.payPeriod.startDate.toLocaleDateString(),
       'to',

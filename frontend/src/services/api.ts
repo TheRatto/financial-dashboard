@@ -6,20 +6,38 @@ import type {
 export const API_BASE_URL = 'http://localhost:3001/api';
 
 export const uploadFile = async (file: File): Promise<UploadResponse> => {
+  console.log('Starting upload for file:', file.name);
+  
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${API_BASE_URL}/upload`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/upload`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Upload failed');
+    console.log('Upload response status:', response.status);
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('Upload failed:', text);
+      try {
+        const errorData = JSON.parse(text);
+        throw new Error(errorData.message || 'Upload failed');
+      } catch (e) {
+        throw new Error(`Upload failed: ${text}`);
+      }
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error;
   }
-
-  return response.json();
 };
 
 export async function fetchTransactions(includeArchived: boolean = false): Promise<Transaction[]> {
@@ -93,4 +111,23 @@ export const deleteTransaction = async (id: string, type: 'soft' | 'hard') => {
     console.error('Delete error:', error);
     throw error;
   }
+};
+
+export const uploadStatement = async (file: File, accountId: string) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('accountId', accountId);
+
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    body: formData,
+    // Don't set Content-Type header - browser will set it with boundary
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Upload failed');
+  }
+
+  return response.json();
 };

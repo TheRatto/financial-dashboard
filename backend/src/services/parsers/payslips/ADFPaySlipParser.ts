@@ -1,7 +1,7 @@
-import { Parser } from '../../../types/parser';
+import { PayslipParser } from '../../../types/parser';
 import { PaySlipData } from '../../../types/payslip';
 
-export class ADFPaySlipParser implements Parser<PaySlipData> {
+export class ADFPaySlipParser implements PayslipParser {
     name = 'ADF Payslip';
 
     async canParse(text: string): Promise<boolean> {
@@ -11,9 +11,10 @@ export class ADFPaySlipParser implements Parser<PaySlipData> {
     async parse(text: string): Promise<PaySlipData> {
         try {
             const lines = text.split('\n').map(line => this.cleanLine(line));
-            console.log('Cleaned lines:', lines); // Debug log
+            console.log('Cleaned lines:', lines);
             
             const paySlipData: PaySlipData = {
+                employer: 'Department of Defence',
                 paymentDate: this.extractPaymentDate(lines),
                 payPeriod: this.extractPayPeriod(lines),
                 grossPay: this.extractGrossPay(lines),
@@ -143,7 +144,7 @@ export class ADFPaySlipParser implements Parser<PaySlipData> {
     }
 
     private extractYTDSuperannuation(lines: string[]): number {
-        const ytdSuperLine = this.findLine(lines, 'YTD Super');
-        return this.extractAmount(ytdSuperLine);
+        const ytdSuperannuationLine = this.findLine(lines, 'YTD Superannuation');
+        return this.extractAmount(ytdSuperannuationLine);
     }
 } 

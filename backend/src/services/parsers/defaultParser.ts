@@ -1,17 +1,16 @@
-import { Transaction, StatementParser } from '../../types/transaction';
+import { Transaction, StatementParser, BasicParsedTransaction } from '../../types/transaction';
+import { TransactionType } from '@prisma/client';
 
 export const defaultParser: StatementParser = {
   name: 'Default',
   
-  canParse: (text: string): boolean => {
-    console.log('First 500 characters of statement:');
-    console.log(text.substring(0, 500));
-    return true;
+  canParse: async (text: string): Promise<boolean> => {
+    return text.includes('STATEMENT') || text.includes('TRANSACTION');
   },
   
-  parse: async (text: string): Promise<Transaction[]> => {
-    const transactions: Transaction[] = [];
+  parse: async (text: string): Promise<BasicParsedTransaction[]> => {
     const lines = text.split('\n');
+    const transactions: BasicParsedTransaction[] = [];
     
     for (const line of lines) {
       if (!line.trim()) continue;
@@ -67,15 +66,15 @@ export const defaultParser: StatementParser = {
             });
 
             const amount = debitAmount > 0 ? debitAmount : creditAmount;
-            const type = debitAmount > 0 ? 'debit' as const : 'credit' as const;
+            const type = debitAmount > 0 ? TransactionType.CREDIT : TransactionType.DEBIT;
 
-            const transaction: Transaction = {
-              date,
-              description,
-              amount,
-              type,
-              balance
-            };
+            transactions.push({
+              date: new Date(),
+              description: description,
+              amount: amount,
+              type: type,
+              balance: balance || 0
+            });
 
             console.log('Successfully parsed transaction:', {
               date: date.toISOString(),
@@ -88,8 +87,6 @@ export const defaultParser: StatementParser = {
                 foundAmounts: allAmounts
               }
             });
-
-            transactions.push(transaction);
           }
         } catch (error) {
           console.log('Failed to parse line:', line);

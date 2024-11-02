@@ -8,14 +8,15 @@ import { Transactions } from './pages/Transactions';
 import Dashboard from './pages/Dashboard';
 import { Settings } from './pages/Settings';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 // Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false, // default: true
-      retry: false, // default: 3
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      refetchOnWindowFocus: false,
+      retry: 1,
+      staleTime: 0, // Always fetch fresh data
     },
   },
 });
@@ -58,6 +59,15 @@ function App() {
                 },
               },
             }} 
+          />
+          <ReactQueryDevtools 
+            initialIsOpen={false}
+            position="bottom"
+            buttonPosition="bottom-right"
+            styleNonce="your-nonce-here"
+           
+            
+            
           />
         </Router>
       </QueryClientProvider>

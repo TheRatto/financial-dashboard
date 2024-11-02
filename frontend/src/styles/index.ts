@@ -11,3 +11,4 @@ export * from './badges';
 export * from './navigation';
 export * from './dropdowns';
 export * from './cards'; 
+export * from './datepicker';
