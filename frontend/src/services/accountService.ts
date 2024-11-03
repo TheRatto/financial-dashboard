@@ -42,4 +42,14 @@ export const getAccounts = async (): Promise<Account[]> => {
 export const getAccount = async (id: string): Promise<Account> => {
   const response = await axios.get<Account>(`${API_URL}/api/accounts/${id}`);
   return response.data;
-}; 
+};
+
+export const deleteAccount = async (id: string, hard: boolean = false): Promise<void> => {
+  console.log(`${hard ? 'Hard' : 'Soft'} deleting account with ID:`, id);
+  await axios.delete(`${API_URL}/api/accounts/${id}${hard ? '?hard=true' : ''}`);
+};
+
+export const restoreAccount = async (id: string): Promise<Account> => {
+  const response = await axios.post<Account>(`${API_URL}/api/accounts/${id}/restore`);
+  return response.data;
+};

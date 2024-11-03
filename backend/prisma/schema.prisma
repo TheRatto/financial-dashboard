@@ -15,6 +15,7 @@ model Account {
   statements   Statement[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  deleted    DateTime?
 }
 
 model Transaction {

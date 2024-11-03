@@ -1,18 +1,22 @@
-import type { BasicParsedTransaction } from './transaction';
-import type { PaySlipData } from './payslip';
+import { BasicParsedTransaction } from './transaction';
+import { PaySlipData } from './payslip';
+
+// Base parser interface
+export interface DocumentParser {
+  name: string;
+  canParse(text: string): Promise<boolean>;
+}
 
 // Bank statement parser
-export interface BankParser {
-    name: string;
-    canParse(text: string): Promise<boolean>;
-    parse(text: string): Promise<BasicParsedTransaction[]>;
+export interface BankParser extends DocumentParser {
+  name: string;
+  parse(text: string): Promise<BasicParsedTransaction[]>;
 }
 
 // Payslip parser
-export interface PayslipParser {
-    name: string;
-    canParse(text: string): Promise<boolean>;
-    parse(text: string): Promise<PaySlipData>;
+export interface PayslipParser extends DocumentParser {
+  name: string;
+  parse(text: string): Promise<PaySlipData>;
 }
 
 export interface StatementMetadata {

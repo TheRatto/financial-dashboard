@@ -9,10 +9,10 @@ interface UploadProgress {
 }
 
 interface PDFUploadProps {
+  accountId: string;
   onUploadSuccess: () => void;
   maxFileSize?: number; // in bytes, default 10MB
   maxFiles?: number; // default 5
-  accountId?: string;
 }
 
 export const PDFUpload: React.FC<PDFUploadProps> = ({ 
@@ -70,84 +70,66 @@ export const PDFUpload: React.FC<PDFUploadProps> = ({
     }
   }, [selectedFiles.length, maxFiles]);
 
-  const uploadFile = useCallback((file: File): Promise<UploadResponse> => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('accountId', accountId!);
+  const uploadFile = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('accountId', accountId);
 
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const percentComplete = Math.round((event.loaded / event.total) * 100);
-          setProgress(prev => ({
-            ...prev,
-            [file.name]: {
-              status: 'processing',
-              progress: percentComplete,
-              message: `Uploading... ${percentComplete}%`
-            }
-          }));
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        console.log('Raw upload response:', xhr.responseText);
-        try {
-          const response = JSON.parse(xhr.responseText);
-          console.log('Upload successful, parsed response:', response);
-          if (xhr.status === 200) {
-            console.log('Before invalidating queries');
-            onUploadSuccess();
-            console.log('After invalidating queries');
-            resolve(response);
-          } else {
-            console.error('Upload failed:', response);
-            reject(new Error(response.message || 'Upload failed'));
-          }
-        } catch (error) {
-          console.error('Error parsing upload response:', error);
-          reject(error);
-        }
-      });
-
-      xhr.onerror = () => {
-        delete xhrRefs.current[file.name];
-        reject(new Error('Network error occurred'));
-      };
-
-      xhr.open('POST', `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/upload`);
-      xhr.send(formData);
+    console.log('Uploading file:', {
+      fileName: file.name,
+      fileSize: file.size,
+      accountId: accountId
     });
-  }, [accountId, onUploadSuccess]);
+
+    try {
+      setProgress(prev => ({
+        ...prev,
+        [file.name]: { status: 'processing', progress: 0, message: 'Starting upload...' }
+      }));
+
+      const response = await fetch('/api/statements/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      console.log('Upload response:', {
+        status: response.status,
+        statusText: response.statusText
+      });
+
+      const data = await response.json();
+      console.log('Upload response data:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      setProgress(prev => ({
+        ...prev,
+        [file.name]: { status: 'complete', progress: 100, message: 'Upload complete' }
+      }));
+
+      toast.success(`Successfully uploaded ${file.name}`);
+      onUploadSuccess();
+    } catch (error) {
+      console.error('Upload error:', error);
+      setProgress(prev => ({
+        ...prev,
+        [file.name]: { 
+          status: 'error', 
+          progress: 0, 
+          message: error instanceof Error ? error.message : 'Upload failed'
+        }
+      }));
+      toast.error(error instanceof Error ? error.message : 'Failed to upload file');
+    }
+  };
 
   const handleUpload = useCallback(async () => {
-    if (!accountId) {
-      toast.error('Please select an account first');
-      return;
-    }
     try {
       const uploadPromises = selectedFiles.map(async (file) => {
         try {
-          setProgress(prev => ({
-            ...prev,
-            [file.name]: {
-              status: 'processing',
-              progress: 0,
-              message: 'Starting upload...'
-            }
-          }));
-
           await uploadFile(file);
-
-          setProgress(prev => ({
-            ...prev,
-            [file.name]: {
-              status: 'complete',
-              progress: 100,
-              message: 'Upload complete!'
-            }
-          }));
         } catch (error) {
           setProgress(prev => ({
             ...prev,

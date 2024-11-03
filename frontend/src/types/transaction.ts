@@ -10,12 +10,12 @@ export interface SortConfig {
 
 export interface Transaction {
   id: string;
-  date: string | Date;
+  date: string;
   description: string;
   amount: number;
   balance?: number;
-  type: 'credit' | 'debit';
-  category?: string;
+  type: 'CREDIT' | 'DEBIT';
+  category?: string | null;
   tags?: string[];
   deleted?: boolean;
   archived?: boolean;

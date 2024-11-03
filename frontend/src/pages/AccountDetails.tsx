@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAccount } from '../services/accountService';
 import { format } from 'date-fns';
@@ -8,6 +8,9 @@ import { toast } from 'react-hot-toast';
 import { PDFUpload } from '../components/PDFUpload/PDFUpload';
 import { buttonStyles, inputStyles, cardStyles } from '../styles';
 import { StatementsList } from '../components/StatementsList';
+import { DeleteConfirmationModal } from '../components/DeleteConfirmationModal';
+import axios from 'axios';
+import { deleteAccount } from '../services/accountService';
 
 const BANK_CONFIGS = {
   ing: {
@@ -41,96 +44,104 @@ interface Statement {
 export default function AccountDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState('');
-  const queryClient = useQueryClient();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
+  // Account query
   const { data: account, isLoading } = useQuery({
     queryKey: ['account', id],
     queryFn: () => getAccount(id!),
-    enabled: !!id
+    enabled: !!id && id !== 'new'
   });
 
-  const { data: statements = [], isLoading: statementsLoading, error: statementsError } = useQuery({
+  // Statements query
+  const { 
+    data: statements = [], 
+    isLoading: statementsLoading, 
+    error: statementsError 
+  } = useQuery({
     queryKey: ['statements', id],
-    queryFn: async () => {
-      console.log('Fetching statements for account:', id);
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/statements/account/${id}`
-      );
-      
-      if (!response.ok) {
-        console.error('Statements fetch failed:', response.status);
-        throw new Error('Failed to fetch statements');
-      }
-      
-      const data = await response.json();
-      console.log('Statements query response:', {
-        status: response.status,
-        data,
-        timestamp: new Date().toISOString()
-      });
-      return data;
-    },
+    queryFn: () => fetch(`/api/statements/account/${id}`).then(res => res.json()),
     enabled: !!id
   });
 
+  // Handle navigation after hooks
+  useEffect(() => {
+    if (id === 'new') {
+      navigate('/accounts/new');
+    }
+  }, [id, navigate]);
+
+  // Add delete handler
   const handleDeleteStatement = async (statementId: string, fileName: string) => {
-    toast((t) => (
-      <div className="flex flex-col gap-4">
-        <p className="text-sm font-medium text-gray-900">
-          Are you sure you want to delete "{fileName}"?
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => toast.dismiss(t.id)}
-            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={async () => {
-              toast.dismiss(t.id);
-              try {
-                const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/api/statements/${statementId}`, {
-                  method: 'DELETE',
-                });
-                
-                if (!response.ok) throw new Error('Failed to delete statement');
-                
-                toast.success('Statement deleted successfully');
-                queryClient.invalidateQueries({ queryKey: ['statements', id] });
-                queryClient.invalidateQueries({ queryKey: ['account', id] });
-              } catch (error) {
-                console.error('Error deleting statement:', error);
-                toast.error('Failed to delete statement');
-              }
-            }}
-            className="px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    ), {
-      duration: Infinity,
-      position: 'top-center',
-      style: {
-        background: 'white',
-        padding: '1rem',
-        borderRadius: '0.5rem',
-        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-      },
-    });
+    if (!window.confirm(`Are you sure you want to delete "${fileName}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/statements/${statementId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete statement');
+      }
+
+      toast.success('Statement deleted successfully');
+      queryClient.invalidateQueries({ queryKey: ['statements', id] });
+    } catch (error) {
+      console.error('Error deleting statement:', error);
+      toast.error('Failed to delete statement');
+    }
   };
 
-  if (isLoading) {
-    return <div className="p-6">Loading...</div>;
-  }
+  // Add save handler
+  const handleSave = async () => {
+    try {
+      const response = await fetch(`/api/accounts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      });
 
-  if (!account) {
-    return <div className="p-6">Account not found</div>;
-  }
+      if (!response.ok) {
+        throw new Error('Failed to update account name');
+      }
+
+      toast.success('Account name updated');
+      queryClient.invalidateQueries({ queryKey: ['account', id] });
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error updating account:', error);
+      toast.error('Failed to update account name');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteAccount(id!);
+      toast.success('Account deleted successfully');
+      navigate('/accounts');
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || 'Failed to delete account');
+      } else {
+        toast.error('Failed to delete account');
+      }
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+    }
+  };
+
+  if (id === 'new') return null;
+  if (isLoading) return <div>Loading...</div>;
+  if (!account) return <div>Account not found</div>;
 
   const bankConfig = BANK_CONFIGS[account.bankId as keyof typeof BANK_CONFIGS] || {
     name: account.bankId,
@@ -143,7 +154,7 @@ export default function AccountDetails() {
     <div className="min-h-screen bg-gray-50 dark:bg-dark-900 py-8">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header Section */}
-        <div className="mb-6">
+        <div className="mb-6 flex justify-between items-center">
           <button
             onClick={() => navigate('/accounts')}
             className="inline-flex items-center text-sm font-medium 
@@ -153,6 +164,14 @@ export default function AccountDetails() {
           >
             <ArrowLeftIcon className="h-5 w-5 mr-1" />
             Back to Accounts
+          </button>
+          
+          <button
+            onClick={() => setIsDeleteModalOpen(true)}
+            className={`${buttonStyles.danger} inline-flex items-center`}
+          >
+            <TrashIcon className="h-5 w-5 mr-2" />
+            Delete Account
           </button>
         </div>
 
@@ -168,7 +187,7 @@ export default function AccountDetails() {
                     onChange={(e) => setNewName(e.target.value)}
                     className={inputStyles.base}
                   />
-                  <button onClick={() => {/* your existing handleSave logic */}} className={buttonStyles.primary}>
+                  <button onClick={handleSave} className={buttonStyles.primary}>
                     Save
                   </button>
                   <button onClick={() => setIsEditing(false)} className={buttonStyles.secondary}>
@@ -224,13 +243,21 @@ export default function AccountDetails() {
             <PDFUpload 
               accountId={id!}
               onUploadSuccess={() => {
-                console.log('Upload success, invalidating queries');
-                queryClient.invalidateQueries({ queryKey: ['statements', id] });
-                console.log('Queries invalidated');
+                // Invalidate all statement queries for this account
+                queryClient.invalidateQueries({ 
+                  queryKey: ['statements']
+                });
+                queryClient.invalidateQueries({ 
+                  queryKey: ['statements', id]
+                });
+                queryClient.invalidateQueries({ 
+                  queryKey: ['transactions']
+                });
                 
                 // Force an immediate refetch
-                queryClient.refetchQueries({ queryKey: ['statements', id] });
-                console.log('Refetch triggered');
+                queryClient.refetchQueries({ 
+                  queryKey: ['statements', id]
+                });
               }} 
             />
           </div>
@@ -266,6 +293,15 @@ export default function AccountDetails() {
           </div>
         </div>
       </div>
+
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDeleteAccount}
+        isLoading={isDeleting}
+        title="Delete Account"
+        message="Are you sure you want to delete this account? All related transactions and statements will be permanently deleted. This action cannot be undone."
+      />
     </div>
   );
 } 

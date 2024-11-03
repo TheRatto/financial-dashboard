@@ -6,27 +6,31 @@ import { Transaction } from '../../../types/transaction';
 const mockTransactions: Transaction[] = [
   {
     id: '1',
-    date: new Date('2024-01-01'),
+    date: new Date('2024-01-01').toISOString(),
     description: 'First Transaction',
     amount: 100.00,
-    type: 'credit',
+    type: 'CREDIT',
     balance: 100.00,
     category: null,
     deleted: false,
-    createdAt: new Date(),
-    updatedAt: new Date()
+    accountId: '1',
+    accountName: 'Test Account',
+    statementId: '1',
+    createdAt: new Date().toISOString()
   },
   {
     id: '2',
-    date: new Date('2024-01-02'),
+    date: new Date('2024-01-02').toISOString(),
     description: 'Second Transaction',
     amount: 50.00,
-    type: 'credit',
+    type: 'CREDIT',
     balance: 150.00,
     category: null,
     deleted: false,
-    createdAt: new Date(),
-    updatedAt: new Date()
+    accountId: '1',
+    accountName: 'Test Account',
+    statementId: '1',
+    createdAt: new Date().toISOString()
   }
 ];
 

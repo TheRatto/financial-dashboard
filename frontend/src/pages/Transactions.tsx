@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ViewDropdown } from '../components/ViewDropdown';
 import { SortDropdown } from '../components/SortDropdown';
@@ -11,6 +11,9 @@ import {
 } from '@heroicons/react/24/outline';
 import Select from 'react-select';
 import { DateRangePicker } from '../components/DateRangePicker';
+import { useTransactions } from '../hooks/useTransactions';
+import { useSearchParams } from 'react-router-dom';
+import { deleteTransaction } from '../services/api';
 import { 
   layout, 
   typography, 
@@ -20,46 +23,8 @@ import {
   inputStyles, 
   badgeStyles 
 } from '../styles';
-
-interface Transaction {
-  id: string;
-  date: Date;
-  description: string;
-  amount: number;
-  type: 'CREDIT' | 'DEBIT';
-  balance: number;
-  accountName: string;
-}
-
-const testTransactions: Transaction[] = [
-  {
-    id: '1',
-    date: new Date('2024-03-15'),
-    description: 'Woolworths Groceries',
-    amount: 85.50,
-    type: 'DEBIT',
-    balance: 1425.30,
-    accountName: 'Everyday Account'
-  },
-  {
-    id: '2',
-    date: new Date('2024-03-14'),
-    description: 'Salary Payment',
-    amount: 2500.00,
-    type: 'CREDIT',
-    balance: 1510.80,
-    accountName: 'Savings Account'
-  },
-  {
-    id: '3',
-    date: new Date('2024-03-14'),
-    description: 'Netflix Subscription',
-    amount: 15.99,
-    type: 'DEBIT',
-    balance: -989.20,
-    accountName: 'Everyday Account'
-  }
-];
+import { Transaction } from '../types/transaction';
+import { formatBalance, getBalanceClass } from '../utils/formatters';
 
 interface AccountOption {
   value: string;
@@ -67,348 +32,249 @@ interface AccountOption {
 }
 
 export function Transactions() {
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
-  const [selectedAccounts, setSelectedAccounts] = useState<AccountOption[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accountId = searchParams.get('accountId');
+  
+  const [startDate, setStartDate] = useState<Date | null>(() => 
+    searchParams.get('startDate') ? new Date(searchParams.get('startDate')!) : null
+  );
+  const [endDate, setEndDate] = useState<Date | null>(() => 
+    searchParams.get('endDate') ? new Date(searchParams.get('endDate')!) : null
+  );
+
   const [showArchived, setShowArchived] = useState(false);
   const [perPage, setPerPage] = useState(25);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(true);
+  const [minBalance, setMinBalance] = useState<number | null>(null);
+  const [selectedAccounts, setSelectedAccounts] = useState<AccountOption[]>([]);
+
+  const { data: transactions, isLoading, error } = useTransactions({
+    accountId: accountId ?? undefined,
+    startDate: startDate ?? undefined,
+    endDate: endDate ?? undefined,
+    includeArchived: showArchived
+  });
 
   const accountOptions: AccountOption[] = [
     { value: 'everyday', label: 'Everyday Account' },
     { value: 'savings', label: 'Savings Account' },
     { value: 'credit', label: 'Credit Card' },
     { value: 'investment', label: 'Investment Account' },
-    // Add more accounts as needed
   ];
 
-  const accountSelect = (
-    <div className="w-64">
-      <Select
-        isMulti
-        options={accountOptions}
-        value={selectedAccounts}
-        onChange={(newValue) => setSelectedAccounts(newValue as AccountOption[])}
-        placeholder="Search accounts..."
-        classNames={{
-          control: (state) => inputStyles.select.control(state),
-          menu: () => inputStyles.select.menu,
-          option: (state) => inputStyles.select.option(state),
-          noOptionsMessage: () => inputStyles.select.noOptionsMessage,
-          multiValue: () => badgeStyles.neutral,
-          multiValueLabel: () => 'text-gray-700 dark:text-gray-200 text-sm px-2 py-1',
-          multiValueRemove: () => 'hover:bg-gray-200 dark:hover:bg-dark-600 hover:text-gray-900 dark:hover:text-gray-100 rounded-r-md px-1'
-        }}
-        theme={(theme) => ({
-          ...theme,
-          colors: {
-            ...theme.colors,
-            neutral0: 'var(--bg-color)',
-            neutral20: 'var(--border-color)',
-            neutral30: 'var(--border-hover-color)',
-            primary: 'var(--primary-color)',
-          },
-        })}
-      />
-    </div>
-  );
+  const filteredTransactions = useMemo(() => {
+    return (transactions ?? []).filter(transaction => {
+      const transactionDate = new Date(transaction.date);
+      const matchesAccount = selectedAccounts.length === 0 || 
+        selectedAccounts.some(account => account.value === transaction.accountId);
+      const matchesDateRange = (!startDate || transactionDate >= startDate) &&
+                            (!endDate || transactionDate <= endDate);
+      const matchesBalanceRange = !minBalance || 
+        (transaction.balance ?? -Infinity) >= minBalance;
+      return matchesAccount && matchesDateRange && matchesBalanceRange;
+    });
+  }, [transactions, selectedAccounts, startDate, endDate, minBalance]);
 
-  const filteredTransactions = testTransactions.filter(transaction => {
-    const matchesAccount = selectedAccounts.length === 0 || 
-      selectedAccounts.some(account => account.value === transaction.accountName);
-    const matchesDateRange = (!startDate || transaction.date >= startDate) &&
-                           (!endDate || transaction.date <= endDate);
-    return matchesAccount && matchesDateRange;
-  });
+  const sortedTransactions = useMemo(() => {
+    return (transactions ?? []).sort((a, b) => {
+      if (sortBy === 'newest') return new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (sortBy === 'oldest') return new Date(a.date).getTime() - new Date(b.date).getTime();
+      return 0; // Default case
+    });
+  }, [transactions, sortBy]);
 
-  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
-    switch (sortBy) {
-      case 'newest':
-        return b.date.getTime() - a.date.getTime();
-      case 'oldest':
-        return a.date.getTime() - b.date.getTime();
-      case 'largest':
-        const absA = Math.abs(a.amount);
-        const absB = Math.abs(b.amount);
-        if (absA === absB) {
-          return a.type === 'DEBIT' ? -1 : 1;
-        }
-        return absB - absA;
-      case 'smallest':
-        const absALow = Math.abs(a.amount);
-        const absBLow = Math.abs(b.amount);
-        if (absALow === absBLow) {
-          return a.type === 'CREDIT' ? -1 : 1;
-        }
-        return absALow - absBLow;
-      default:
-        return 0;
-    }
-  });
-
-  const handleSelectAll = () => {
-    if (selectedTransactions.size === sortedTransactions.length) {
+  // Preserve delete handlers
+  const handleSoftDelete = async () => {
+    try {
+      await Promise.all(
+        Array.from(selectedTransactions).map(id => 
+          deleteTransaction(id, 'soft')
+        )
+      );
       setSelectedTransactions(new Set());
-    } else {
-      setSelectedTransactions(new Set(sortedTransactions.map(t => t.id)));
+    } catch (error) {
+      console.error('Error soft deleting transactions:', error);
     }
   };
 
-  const handleSelectTransaction = (id: string) => {
-    const newSelected = new Set(selectedTransactions);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
+  const handleHardDelete = async () => {
+    try {
+      await Promise.all(
+        Array.from(selectedTransactions).map(id => 
+          deleteTransaction(id, 'hard')
+        )
+      );
+      setSelectedTransactions(new Set());
+    } catch (error) {
+      console.error('Error hard deleting transactions:', error);
     }
-    setSelectedTransactions(newSelected);
   };
-
-  const handleSoftDelete = () => {
-    console.log('Soft delete:', Array.from(selectedTransactions));
-    // Implement soft delete logic
-    setSelectedTransactions(new Set());
-  };
-
-  const handleHardDelete = () => {
-    console.log('Hard delete:', Array.from(selectedTransactions));
-    // Implement hard delete logic
-    setSelectedTransactions(new Set());
-  };
-
-  useEffect(() => {
-    async function loadTransactions() {
-      setIsLoading(true);
-      try {
-        // Your data fetching logic here
-        // For now, we'll just simulate a delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
-        console.error('Error loading transactions:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadTransactions();
-  }, [/* your dependencies */]);
 
   return (
-    <div className={`min-h-screen ${colors.gray[50]} py-8`}>
-      <div className={layout.container.default}>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => window.history.back()}
-              className={`${buttonStyles.icon} ${buttonStyles.secondary} rounded-full p-2`}
-            >
-              <ArrowLeftIcon className="h-5 w-5" />
-            </button>
-            <h1 className={typography.heading.h2}>Transactions</h1>
-          </div>
+    <div className="container mx-auto px-4 py-8">
+      {/* Header - Remove delete buttons */}
+      <div className={layout.spacing.section}>
+        <div className="flex justify-between items-center">
+          <h1 className={typography.heading.h1}>Transactions</h1>
         </div>
+      </div>
 
-        {/* Filters Section */}
-        <div className={`${layout.card.base} ${layout.card.padding}`}>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Date Range */}
-            <div className={layout.spacing.element}>
-              <label className={forms.label}>Date Range</label>
-              <DateRangePicker
-                startDate={startDate}
-                endDate={endDate}
-                onChange={(start, end) => {
-                  setStartDate(start);
-                  setEndDate(end);
-                }}
-              />
-            </div>
+      {/* Filter Bar */}
+      <div className={`${layout.card.base} ${layout.card.padding} mb-6`}>
+        <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-6">
+          <DateRangePicker
+            startDate={startDate}
+            endDate={endDate}
+            onChange={(start, end) => {
+              setStartDate(start);
+              setEndDate(end);
+            }}
+          />
+          
+          <Select
+            isMulti
+            options={accountOptions}
+            value={selectedAccounts}
+            onChange={(newValue) => setSelectedAccounts(newValue as AccountOption[])}
+            placeholder="Search accounts..."
+            classNames={{
+              control: (state) => `${inputStyles.select.control(state)} !min-h-[38px]`,
+              menu: () => inputStyles.select.menu,
+              option: (state) => inputStyles.select.option(state),
+              container: () => 'w-full'
+            }}
+          />
 
-            {/* Account Filter */}
-            <div className={layout.spacing.element}>
-              <label className={forms.label}>Account</label>
-              <Select
-                isMulti
-                options={accountOptions}
-                value={selectedAccounts}
-                onChange={(newValue) => setSelectedAccounts(newValue as AccountOption[])}
-                placeholder="Search accounts..."
-                classNames={{
-                  control: (state) => `${inputStyles.select.control(state)} !min-h-[38px] !h-[38px]`,
-                  menu: () => inputStyles.select.menu,
-                  option: (state) => inputStyles.select.option(state),
-                  multiValue: () => badgeStyles.neutral,
-                  multiValueLabel: () => typography.body.small,
-                  multiValueRemove: () => buttonStyles.icon
-                }}
-                styles={{
-                  control: (base) => ({
-                    ...base,
-                    minHeight: '38px',
-                    height: '38px'
-                  })
-                }}
-              />
-            </div>
+          <ViewDropdown 
+            showArchived={showArchived}
+            setShowArchived={setShowArchived}
+            perPage={perPage}
+            setPerPage={setPerPage}
+          />
 
-            {/* View Dropdown */}
-            <div className={layout.spacing.element}>
-              <label className={forms.label}>View Options</label>
-              <ViewDropdown
-                showArchived={showArchived}
-                setShowArchived={setShowArchived}
-                perPage={perPage}
-                setPerPage={setPerPage}
-              />
-            </div>
-
-            {/* Sort Dropdown */}
-            <div className={layout.spacing.element}>
-              <label className={forms.label}>Sort By</label>
-              <SortDropdown
-                sortBy={sortBy}
-                setSortBy={setSortBy}
-              />
-            </div>
-          </div>
+          <SortDropdown 
+            sortBy={sortBy} 
+            setSortBy={setSortBy} 
+          />
         </div>
+      </div>
 
-        {/* Loading State */}
-        {isLoading && (
-          <div className="mt-6 bg-white dark:bg-dark-800 rounded-xl shadow-sm p-12">
-            <div className="animate-pulse space-y-4">
-              <div className="h-4 bg-gray-200 dark:bg-dark-600 rounded w-3/4"></div>
-              <div className="h-4 bg-gray-200 dark:bg-dark-600 rounded"></div>
-              <div className="h-4 bg-gray-200 dark:bg-dark-600 rounded"></div>
-            </div>
-          </div>
-        )}
-
-        {/* Transactions Table */}
-        <div className="mt-6 overflow-x-auto">
-          <div className="inline-block min-w-full align-middle">
-            <div className="overflow-hidden bg-white dark:bg-dark-800 rounded-xl shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
-                <thead className="bg-gray-50 dark:bg-dark-700">
-                  <tr>
-                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pl-6">
-                      <input
-                        type="checkbox"
-                        checked={selectedTransactions.size === sortedTransactions.length}
-                        onChange={handleSelectAll}
-                        className="h-4 w-4 rounded border-gray-300 dark:border-dark-600 
-                          text-primary-600 dark:text-primary-500
-                          focus:ring-primary-500 dark:focus:ring-primary-400 
-                          focus:ring-offset-0"
-                      />
-                    </th>
-                    {/* Header cells */}
-                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-xs 
-                      font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Date
-                    </th>
-                    {/* ... other header cells with same dark mode classes ... */}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-dark-700">
-                  {sortedTransactions.map((transaction) => (
-                    <tr 
-                      key={transaction.id}
-                      className={`
-                        hover:bg-gray-50 dark:hover:bg-dark-700 
-                        transition-colors duration-150 ease-in-out
-                        ${selectedTransactions.has(transaction.id) 
-                          ? 'bg-primary-50 dark:bg-primary-900/50 hover:bg-primary-100 dark:hover:bg-primary-900/75' 
-                          : ''}
-                      `}
-                    >
-                      {/* Checkbox cell */}
-                      <td className="relative py-4 pl-4 pr-3 sm:pl-6">
-                        <input
-                          type="checkbox"
-                          checked={selectedTransactions.has(transaction.id)}
-                          onChange={() => handleSelectTransaction(transaction.id)}
-                          className="h-4 w-4 rounded border-gray-300 dark:border-dark-600 
-                            text-primary-600 dark:text-primary-500
-                            focus:ring-primary-500 dark:focus:ring-primary-400 
-                            focus:ring-offset-0"
-                        />
-                      </td>
-                      {/* Data cells */}
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 
-                        text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {format(transaction.date, 'dd/MM/yyyy')}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 
-                        text-sm text-gray-600 dark:text-gray-300">
-                        {transaction.accountName}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 
-                        text-sm text-gray-600 dark:text-gray-300">
-                        {transaction.description}
-                      </td>
-                      <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium text-right
-                        ${transaction.type === 'DEBIT' 
-                          ? 'text-error-600 dark:text-error-400' 
-                          : 'text-success-600 dark:text-success-400'}`}>
-                        {transaction.type === 'DEBIT' ? '-' : ''}${transaction.amount.toFixed(2)}
-                      </td>
-                      <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium text-right
-                        ${transaction.balance < 0 
-                          ? 'text-error-600 dark:text-error-400' 
-                          : 'text-gray-900 dark:text-gray-100'}`}>
-                        ${transaction.balance.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* Keep existing table implementation */}
+      {isLoading ? (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
         </div>
+      ) : error ? (
+        <div className="rounded-md bg-red-50 p-4 text-red-600">
+          {error instanceof Error ? error.message : 'Failed to load transactions'}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            {/* Fix 6: Replace typography table classes with Tailwind */}
+            <thead>
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedTransactions.size === sortedTransactions.length}
+                    onChange={() => {
+                      if (selectedTransactions.size === sortedTransactions.length) {
+                        setSelectedTransactions(new Set());
+                      } else {
+                        setSelectedTransactions(new Set(sortedTransactions.map(t => t.id)));
+                      }
+                    }}
+                  />
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {sortedTransactions.map(transaction => (
+                <tr key={transaction.id}>
+                  <td className="px-6 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedTransactions.has(transaction.id)}
+                      onChange={() => {
+                        const newSelected = new Set(selectedTransactions);
+                        if (newSelected.has(transaction.id)) {
+                          newSelected.delete(transaction.id);
+                        } else {
+                          newSelected.add(transaction.id);
+                        }
+                        setSelectedTransactions(newSelected);
+                      }}
+                    />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {format(new Date(transaction.date), 'dd MMM yyyy')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaction.description}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                    <span className={transaction.type === 'CREDIT' ? 'text-green-600' : 'text-red-600'}>
+                      {formatBalance(transaction.amount)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                    <span className={getBalanceClass(transaction.balance)}>
+                      {formatBalance(transaction.balance)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-        {/* Empty State */}
-        {sortedTransactions.length === 0 && (
-          <div className="mt-6 bg-white dark:bg-dark-800 rounded-xl shadow-sm p-12 text-center">
-            <ArchiveBoxIcon className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" />
-            <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">
-              No transactions found
-            </h3>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Try adjusting your filters to see more results
-            </p>
-          </div>
-        )}
-
-        {/* Action Bar */}
-        {selectedTransactions.size > 0 && (
-          <div className="fixed bottom-0 inset-x-0 pb-6">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="bg-white dark:bg-dark-800 rounded-xl shadow-lg p-4 
-                flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <CheckCircleIcon className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {selectedTransactions.size} {selectedTransactions.size === 1 ? 'transaction' : 'transactions'} selected
-                  </span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <button onClick={handleSoftDelete} className={buttonStyles.secondary}>
-                    <ArchiveBoxIcon className="h-5 w-5 mr-2 text-gray-400 dark:text-gray-500" />
-                    Archive
-                  </button>
-                  <button onClick={handleHardDelete} className={buttonStyles.danger}>
-                    <TrashIcon className="h-5 w-5 mr-2 text-error-400" />
-                    Delete
-                  </button>
-                </div>
+      {/* Popup Action Bar */}
+      {selectedTransactions.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg p-4">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 dark:border-gray-600 text-violet-600 dark:text-violet-500 focus:ring-violet-500 dark:focus:ring-violet-400 bg-white dark:bg-gray-700"
+                  checked={selectedTransactions.size === sortedTransactions.length}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedTransactions(new Set(sortedTransactions.map(t => t.id)));
+                    } else {
+                      setSelectedTransactions(new Set());
+                    }
+                  }}
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  Select All ({selectedTransactions.size}/{sortedTransactions.length})
+                </span>
               </div>
             </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handleSoftDelete}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                <ArchiveBoxIcon className="h-4 w-4 mr-2" />
+                Archive Selected
+              </button>
+              <button
+                onClick={handleHardDelete}
+                className="inline-flex items-center px-4 py-2 border border-red-300 dark:border-red-500 rounded-md shadow-sm text-sm font-medium text-red-700 dark:text-red-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-gray-700"
+              >
+                <TrashIcon className="h-4 w-4 mr-2" />
+                Delete Selected
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 } 

@@ -3,11 +3,11 @@ import multer from 'multer';
 import { StatementParser } from '../services/statementParser';
 import { prisma } from '../db/';
 import path from 'path';
-import PDFParser from 'pdf-parse';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import { importTransactions } from '../services/transactionService';
 import { format } from 'date-fns';
+import { extractTextFromPDF } from '../services/pdfService';
 
 const router = express.Router();
 
@@ -34,9 +34,23 @@ const upload = multer({
 });
 
 router.post('/upload', upload.single('file'), async (req, res): Promise<void> => {
+  console.log('\n=== Statement Upload Request ===');
+  console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
+  console.log('File:', req.file ? {
+    originalname: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size
+  } : 'No file');
+
   try {
     const file = req.file;
     const { accountId } = req.body;
+
+    console.log('\n=== Storage Check ===');
+    console.log('File saved to:', file?.path);
+    console.log('Original name:', file?.originalname);
+    console.log('File size:', file?.size);
 
     console.log('\n=== Upload Request ===');
     console.log('File:', file?.originalname);
@@ -49,9 +63,9 @@ router.post('/upload', upload.single('file'), async (req, res): Promise<void> =>
 
     // Read and parse PDF
     const dataBuffer = await fs.readFile(file.path);
-    const pdfData = await PDFParser(dataBuffer);
+    const pdfText = await extractTextFromPDF(dataBuffer);
     const parser = new StatementParser();
-    const parsedStatement = await parser.parseStatement(pdfData.text, accountId);
+    const parsedStatement = await parser.parseStatement(pdfText);
 
     // Get date range from transactions
     const transactions = parsedStatement.transactions;
@@ -121,6 +135,13 @@ router.post('/upload', upload.single('file'), async (req, res): Promise<void> =>
         },
       });
 
+      console.log('\n=== Database Storage Check ===');
+      console.log('Statement saved:', {
+        id: newStatement.id,
+        fileName: newStatement.fileName,
+        filePath: newStatement.filePath
+      });
+
       console.log('Created statement:', newStatement);  // Debug log
 
       // Then import the transactions using the existing service
@@ -180,18 +201,18 @@ router.delete('/:id', async (req, res) => {
 
 // Get statements for account
 router.get('/account/:accountId', async (req, res) => {
+  const { accountId } = req.params;
+  
+  console.log('\n=== Fetching Statements ===');
+  console.log('Account ID:', accountId);
+
   try {
-    const { accountId } = req.params;
     const statements = await prisma.statement.findMany({
-      where: {
-        accountId: accountId
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      where: { accountId },
+      orderBy: { createdAt: 'desc' }
     });
-    
-    console.log(`Found ${statements.length} statements for account ${accountId}`);  // Debug log
+
+    console.log('Found statements:', statements.length);
     res.json(statements);
   } catch (error) {
     console.error('Error fetching statements:', error);

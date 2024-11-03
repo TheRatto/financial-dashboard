@@ -7,6 +7,7 @@ import { Accounts } from './pages/Accounts';
 import { Transactions } from './pages/Transactions';
 import Dashboard from './pages/Dashboard';
 import { Settings } from './pages/Settings';
+import NewAccount from './pages/NewAccount';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
@@ -31,8 +32,9 @@ function App() {
             <main className="py-6">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/accounts" element={<Accounts />} />
+                <Route path="/accounts/new" element={<NewAccount />} />
                 <Route path="/accounts/:id" element={<AccountDetails />} />
+                <Route path="/accounts" element={<Accounts />} />
                 <Route path="/transactions" element={<Transactions />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>

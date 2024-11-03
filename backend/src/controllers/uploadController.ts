@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { extractTextFromPDF } from '../services/pdfService';
-import { findParser } from '../services/parserService';
+import { ParserManager } from '../services/parsers/ParserManager';
 import type { BasicParsedTransaction } from '../types/transaction';
 import type { PaySlipData } from '../types/payslip';
 
@@ -34,7 +34,8 @@ export const handleFileUpload = async (req: Request, res: Response<ApiResponse>)
     console.log('PDF text extracted, length:', text.length);
     
     // Find appropriate parser
-    const parser = await findParser(text);
+    const parserManager = ParserManager.getInstance();
+    const parser = await parserManager.findParser(text);
     if (!parser) {
       return res.status(400).json({
         success: false,

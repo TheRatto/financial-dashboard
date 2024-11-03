@@ -123,23 +123,34 @@ export const importTransactions = async (
         statementId?: string;
     }[]
 ): Promise<Transaction[]> => {
-    const saved = await prisma.$transaction(
-        transactions.map(transaction =>
-            prisma.transaction.create({
-                data: {
-                    date: transaction.date,
-                    description: transaction.description,
-                    amount: transaction.amount,
-                    type: transaction.type,
-                    category: transaction.category || null,
-                    accountId: transaction.accountId,
-                    balance: transaction.balance,
-                    statementId: transaction.statementId
-                },
-                include: { tags: true }
-            })
-        )
-    );
+    console.log('\n=== Importing Transactions ===');
+    console.log('Number of transactions:', transactions.length);
+    console.log('First transaction:', transactions[0]);
+    console.log('Last transaction:', transactions[transactions.length - 1]);
 
-    return saved.map(mapToTransaction);
+    try {
+        const saved = await prisma.$transaction(
+            transactions.map(transaction =>
+                prisma.transaction.create({
+                    data: {
+                        date: transaction.date,
+                        description: transaction.description,
+                        amount: transaction.amount,
+                        type: transaction.type,
+                        category: transaction.category || null,
+                        accountId: transaction.accountId,
+                        balance: transaction.balance,
+                        statementId: transaction.statementId
+                    },
+                    include: { tags: true }
+                })
+            )
+        );
+
+        console.log('Successfully imported', saved.length, 'transactions');
+        return saved.map(mapToTransaction);
+    } catch (error) {
+        console.error('Error importing transactions:', error);
+        throw error;
+    }
 };
