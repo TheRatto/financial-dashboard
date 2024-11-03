@@ -19,6 +19,7 @@ import {
 } from '../styles';
 import { Transaction } from '../types/transaction';
 import { formatBalance, getBalanceClass } from '../utils/formatters';
+import { toast } from 'react-hot-toast';
 
 interface AccountOption {
   value: string;
@@ -57,8 +58,8 @@ export function Transactions() {
     { value: 'investment', label: 'Investment Account' },
   ];
 
-  const filteredTransactions = useMemo(() => {
-    return (transactions ?? []).filter(transaction => {
+  const processedTransactions = useMemo(() => {
+    const filtered = (transactions ?? []).filter(transaction => {
       const transactionDate = new Date(transaction.date);
       const matchesAccount = selectedAccounts.length === 0 || 
         selectedAccounts.some(account => account.value === transaction.accountId);
@@ -68,45 +69,44 @@ export function Transactions() {
         (transaction.balance ?? -Infinity) >= minBalance;
       return matchesAccount && matchesDateRange && matchesBalanceRange;
     });
-  }, [transactions, selectedAccounts, startDate, endDate, minBalance]);
 
-  const sortedTransactions = useMemo(() => {
-    return (transactions ?? []).sort((a, b) => {
+    return filtered.sort((a, b) => {
       if (sortBy === 'newest') return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (sortBy === 'oldest') return new Date(a.date).getTime() - new Date(b.date).getTime();
-      return 0; // Default case
+      if (sortBy === 'largest') return b.amount - a.amount;
+      if (sortBy === 'smallest') return a.amount - b.amount;
+      return 0;
     });
-  }, [transactions, sortBy]);
+  }, [transactions, selectedAccounts, startDate, endDate, minBalance, sortBy]);
 
-  // Preserve delete handlers
-  const handleSoftDelete = async () => {
+  const handleDelete = async (type: 'soft' | 'hard') => {
+    const action = type === 'soft' ? 'archive' : 'delete';
+    if (!window.confirm(`Are you sure you want to ${action} the selected transactions?`)) {
+      return;
+    }
+
+    const previousTransactions = new Set(selectedTransactions);
+    
     try {
+      setSelectedTransactions(new Set());
       await Promise.all(
-        Array.from(selectedTransactions).map(id => 
-          deleteTransaction(id, 'soft')
+        Array.from(previousTransactions).map(id => 
+          deleteTransaction(id, type)
         )
       );
-      setSelectedTransactions(new Set());
+      toast.success(`Successfully ${action}d selected transactions`);
     } catch (error) {
-      console.error('Error soft deleting transactions:', error);
+      setSelectedTransactions(previousTransactions);
+      console.error(`Error ${action}ing transactions:`, error);
+      toast.error(`Failed to ${action} transactions`);
     }
   };
 
-  const handleHardDelete = async () => {
-    try {
-      await Promise.all(
-        Array.from(selectedTransactions).map(id => 
-          deleteTransaction(id, 'hard')
-        )
-      );
-      setSelectedTransactions(new Set());
-    } catch (error) {
-      console.error('Error hard deleting transactions:', error);
-    }
-  };
+  const handleSoftDelete = () => handleDelete('soft');
+  const handleHardDelete = () => handleDelete('hard');
 
   const groupedTransactions = useMemo(() => {
-    return sortedTransactions.reduce((groups: { [date: string]: Transaction[] }, transaction: Transaction) => {
+    return processedTransactions.reduce((groups: { [date: string]: Transaction[] }, transaction: Transaction) => {
       const date = format(new Date(transaction.date), 'EEEE, d MMMM yyyy');
       if (!groups[date]) {
         groups[date] = [];
@@ -114,7 +114,7 @@ export function Transactions() {
       groups[date].push(transaction);
       return groups;
     }, {});
-  }, [sortedTransactions]);
+  }, [processedTransactions]);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -262,17 +262,17 @@ export function Transactions() {
                 <input
                   type="checkbox"
                   className="rounded border-gray-300 dark:border-gray-600 text-violet-600 dark:text-violet-500 focus:ring-violet-500 dark:focus:ring-violet-400 bg-white dark:bg-gray-700"
-                  checked={selectedTransactions.size === sortedTransactions.length}
+                  checked={selectedTransactions.size === processedTransactions.length}
                   onChange={(e) => {
                     if (e.target.checked) {
-                      setSelectedTransactions(new Set(sortedTransactions.map(t => t.id)));
+                      setSelectedTransactions(new Set(processedTransactions.map(t => t.id)));
                     } else {
                       setSelectedTransactions(new Set());
                     }
                   }}
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">
-                  Select All ({selectedTransactions.size}/{sortedTransactions.length})
+                  Select All ({selectedTransactions.size}/{processedTransactions.length})
                 </span>
               </div>
             </div>
