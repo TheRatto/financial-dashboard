@@ -4,10 +4,8 @@ import { ViewDropdown } from '../components/ViewDropdown';
 import { SortDropdown } from '../components/SortDropdown';
 import { SortOption } from '../types/transaction';
 import {
-  CheckCircleIcon,
   ArchiveBoxIcon,
   TrashIcon,
-  ArrowLeftIcon
 } from '@heroicons/react/24/outline';
 import Select from 'react-select';
 import { DateRangePicker } from '../components/DateRangePicker';
@@ -17,11 +15,7 @@ import { deleteTransaction } from '../services/api';
 import { 
   layout, 
   typography, 
-  colors, 
-  forms, 
-  buttonStyles, 
   inputStyles, 
-  badgeStyles 
 } from '../styles';
 import { Transaction } from '../types/transaction';
 import { formatBalance, getBalanceClass } from '../utils/formatters';
@@ -111,6 +105,17 @@ export function Transactions() {
     }
   };
 
+  const groupedTransactions = useMemo(() => {
+    return sortedTransactions.reduce((groups: { [date: string]: Transaction[] }, transaction: Transaction) => {
+      const date = format(new Date(transaction.date), 'EEEE, d MMMM yyyy');
+      if (!groups[date]) {
+        groups[date] = [];
+      }
+      groups[date].push(transaction);
+      return groups;
+    }, {});
+  }, [sortedTransactions]);
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header - Remove delete buttons */}
@@ -170,66 +175,81 @@ export function Transactions() {
           {error instanceof Error ? error.message : 'Failed to load transactions'}
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            {/* Fix 6: Replace typography table classes with Tailwind */}
-            <thead>
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <input
-                    type="checkbox"
-                    checked={selectedTransactions.size === sortedTransactions.length}
-                    onChange={() => {
-                      if (selectedTransactions.size === sortedTransactions.length) {
-                        setSelectedTransactions(new Set());
-                      } else {
-                        setSelectedTransactions(new Set(sortedTransactions.map(t => t.id)));
-                      }
-                    }}
-                  />
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {sortedTransactions.map(transaction => (
-                <tr key={transaction.id}>
-                  <td className="px-6 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedTransactions.has(transaction.id)}
-                      onChange={() => {
-                        const newSelected = new Set(selectedTransactions);
-                        if (newSelected.has(transaction.id)) {
-                          newSelected.delete(transaction.id);
-                        } else {
-                          newSelected.add(transaction.id);
-                        }
-                        setSelectedTransactions(newSelected);
-                      }}
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {format(new Date(transaction.date), 'dd MMM yyyy')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaction.description}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                    <span className={transaction.type === 'CREDIT' ? 'text-green-600' : 'text-red-600'}>
-                      {formatBalance(transaction.amount)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                    <span className={getBalanceClass(transaction.balance)}>
-                      {formatBalance(transaction.balance)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          {Object.entries(groupedTransactions).map(([date, dayTransactions]) => (
+            <div key={date} className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                <h3 className={typography.heading.h4}>{date}</h3>
+              </div>
+              
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-900">
+                  <tr>
+                    <th className="w-12 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 dark:border-gray-600 text-violet-600 focus:ring-violet-500"
+                        checked={selectedTransactions.size === dayTransactions.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const newSelected = new Set(selectedTransactions);
+                            dayTransactions.forEach(t => newSelected.add(t.id));
+                            setSelectedTransactions(newSelected);
+                          } else {
+                            const newSelected = new Set(selectedTransactions);
+                            dayTransactions.forEach(t => newSelected.delete(t.id));
+                            setSelectedTransactions(newSelected);
+                          }
+                        }}
+                      />
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {dayTransactions.map(transaction => (
+                    <tr 
+                      key={transaction.id}
+                      className={`
+                        ${transaction.deleted ? 'text-gray-400 dark:text-gray-500 line-through bg-gray-50 dark:bg-gray-900' : 'text-gray-900 dark:text-gray-100'}
+                        hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150
+                      `}
+                    >
+                      <td className="px-6 py-4">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 dark:border-gray-600 text-violet-600 focus:ring-violet-500"
+                          checked={selectedTransactions.has(transaction.id)}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedTransactions);
+                            if (e.target.checked) {
+                              newSelected.add(transaction.id);
+                            } else {
+                              newSelected.delete(transaction.id);
+                            }
+                            setSelectedTransactions(newSelected);
+                          }}
+                        />
+                      </td>
+                      <td className="px-6 py-4">{transaction.description}</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={transaction.type === 'CREDIT' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                          {formatBalance(transaction.amount)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`${getBalanceClass(transaction.balance)} dark:opacity-90`}>
+                          {formatBalance(transaction.balance)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
       )}
 
