@@ -67,49 +67,18 @@ export const updateTransaction = async (
   return response.json();
 };
 
-export const deleteTransaction = async (id: string, type: 'soft' | 'hard') => {
-  console.log('Starting delete transaction:', { id, type });
-  
-  try {
-    const response = await fetch(`/api/transactions/${id}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ type })
-    });
+export const deleteTransaction = async (id: string, type: 'soft' | 'hard'): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/transactions/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ type })
+  });
 
-    console.log('Delete response:', { 
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries())
-    });
-    
-    const text = await response.text();
-    console.log('Response text:', text);
-
-    if (!text) {
-      console.error('Empty response received');
-      throw new Error('Empty response from server');
-    }
-
-    try {
-      const data = JSON.parse(text);
-      console.log('Parsed response:', data);
-      
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to delete transaction');
-      }
-
-      return data;
-    } catch (e) {
-      console.error('Failed to parse response:', e);
-      throw new Error('Invalid JSON response from server');
-    }
-  } catch (error) {
-    console.error('Delete error:', error);
-    throw error;
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to delete transaction' }));
+    throw new Error(error.message || 'Failed to delete transaction');
   }
 };
 

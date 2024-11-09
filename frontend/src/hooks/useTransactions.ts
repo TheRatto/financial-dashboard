@@ -9,11 +9,11 @@ interface UseTransactionsParams {
   includeArchived?: boolean;
 }
 
-export function useTransactions({ 
-  accountId, 
-  startDate, 
-  endDate, 
-  includeArchived = false 
+export function useTransactions({
+  accountId,
+  startDate,
+  endDate,
+  includeArchived
 }: UseTransactionsParams) {
   return useQuery<Transaction[]>({
     queryKey: ['transactions', accountId, startDate, endDate, includeArchived],
@@ -22,13 +22,14 @@ export function useTransactions({
       if (accountId) params.append('accountId', accountId);
       if (startDate) params.append('startDate', startDate.toISOString());
       if (endDate) params.append('endDate', endDate.toISOString());
-      if (includeArchived) params.append('archived', 'true');
+      if (includeArchived) params.append('includeDeleted', 'true');
 
       const response = await fetch(`${API_BASE_URL}/transactions?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch transactions');
       }
-      return response.json();
+      const data = await response.json();
+      return data;
     }
   });
 } 

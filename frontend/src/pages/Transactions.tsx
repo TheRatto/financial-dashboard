@@ -11,7 +11,7 @@ import Select from 'react-select';
 import { DateRangePicker } from '../components/DateRangePicker';
 import { useTransactions } from '../hooks/useTransactions';
 import { useSearchParams } from 'react-router-dom';
-import { deleteTransaction } from '../services/api';
+import { deleteTransaction, API_BASE_URL } from '../services/api';
 import { 
   layout, 
   typography, 
@@ -20,6 +20,7 @@ import {
 import { Transaction } from '../types/transaction';
 import { formatBalance, getBalanceClass } from '../utils/formatters';
 import { toast } from 'react-hot-toast';
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 
 interface AccountOption {
   value: string;
@@ -27,9 +28,28 @@ interface AccountOption {
 }
 
 export function Transactions() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const accountId = searchParams.get('accountId');
-  
+
+  // Add accounts query
+  const { data: accounts } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/accounts`);
+      if (!response.ok) throw new Error('Failed to fetch accounts');
+      return response.json();
+    }
+  });
+
+  // Create memoized account options
+  const accountOptions = useMemo(() => {
+    return (accounts ?? []).map((account: { id: string; name: string }) => ({
+      value: account.id,
+      label: account.name
+    }));
+  }, [accounts]);
+
   const [startDate, setStartDate] = useState<Date | null>(() => 
     searchParams.get('startDate') ? new Date(searchParams.get('startDate')!) : null
   );
@@ -41,22 +61,32 @@ export function Transactions() {
   const [perPage, setPerPage] = useState(25);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
-  const [minBalance, setMinBalance] = useState<number | null>(null);
   const [selectedAccounts, setSelectedAccounts] = useState<AccountOption[]>([]);
 
-  const { data: transactions, isLoading, error } = useTransactions({
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteType, setDeleteType] = useState<'soft' | 'hard' | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ ids, type }: { ids: string[]; type: 'soft' | 'hard' }) =>
+      Promise.all(ids.map(id => deleteTransaction(id, type))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      setSelectedTransactions(new Set());
+      setShowDeleteConfirm(false);
+      toast.success(`Successfully ${deleteType === 'soft' ? 'archived' : 'deleted'} transactions`);
+    },
+    onError: (error: Error) => {
+      console.error('Delete error:', error);
+      toast.error(error.message || `Failed to ${deleteType === 'soft' ? 'archive' : 'delete'} transactions`);
+    }
+  });
+
+  const { data: transactions, isLoading } = useTransactions({
     accountId: accountId ?? undefined,
     startDate: startDate ?? undefined,
     endDate: endDate ?? undefined,
     includeArchived: showArchived
   });
-
-  const accountOptions: AccountOption[] = [
-    { value: 'everyday', label: 'Everyday Account' },
-    { value: 'savings', label: 'Savings Account' },
-    { value: 'credit', label: 'Credit Card' },
-    { value: 'investment', label: 'Investment Account' },
-  ];
 
   const processedTransactions = useMemo(() => {
     const filtered = (transactions ?? []).filter(transaction => {
@@ -65,9 +95,7 @@ export function Transactions() {
         selectedAccounts.some(account => account.value === transaction.accountId);
       const matchesDateRange = (!startDate || transactionDate >= startDate) &&
                             (!endDate || transactionDate <= endDate);
-      const matchesBalanceRange = !minBalance || 
-        (transaction.balance ?? -Infinity) >= minBalance;
-      return matchesAccount && matchesDateRange && matchesBalanceRange;
+      return matchesAccount && matchesDateRange;
     });
 
     return filtered.sort((a, b) => {
@@ -77,29 +105,11 @@ export function Transactions() {
       if (sortBy === 'smallest') return a.amount - b.amount;
       return 0;
     });
-  }, [transactions, selectedAccounts, startDate, endDate, minBalance, sortBy]);
+  }, [transactions, selectedAccounts, startDate, endDate, sortBy]);
 
-  const handleDelete = async (type: 'soft' | 'hard') => {
-    const action = type === 'soft' ? 'archive' : 'delete';
-    if (!window.confirm(`Are you sure you want to ${action} the selected transactions?`)) {
-      return;
-    }
-
-    const previousTransactions = new Set(selectedTransactions);
-    
-    try {
-      setSelectedTransactions(new Set());
-      await Promise.all(
-        Array.from(previousTransactions).map(id => 
-          deleteTransaction(id, type)
-        )
-      );
-      toast.success(`Successfully ${action}d selected transactions`);
-    } catch (error) {
-      setSelectedTransactions(previousTransactions);
-      console.error(`Error ${action}ing transactions:`, error);
-      toast.error(`Failed to ${action} transactions`);
-    }
+  const handleDelete = (type: 'soft' | 'hard') => {
+    setDeleteType(type);
+    setShowDeleteConfirm(true);
   };
 
   const handleSoftDelete = () => handleDelete('soft');
@@ -115,6 +125,19 @@ export function Transactions() {
       return groups;
     }, {});
   }, [processedTransactions]);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteType) return;
+    
+    try {
+      await deleteMutation.mutateAsync({
+        ids: Array.from(selectedTransactions),
+        type: deleteType
+      });
+    } catch (error) {
+      console.error('Failed to delete transactions:', error);
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -170,10 +193,6 @@ export function Transactions() {
         <div className="flex justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
         </div>
-      ) : error ? (
-        <div className="rounded-md bg-red-50 p-4 text-red-600">
-          {error instanceof Error ? error.message : 'Failed to load transactions'}
-        </div>
       ) : (
         <div className="space-y-4">
           {Object.entries(groupedTransactions).map(([date, dayTransactions]) => (
@@ -186,22 +205,7 @@ export function Transactions() {
                 <thead className="bg-gray-50 dark:bg-gray-900">
                   <tr>
                     <th className="w-12 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      <input
-                        type="checkbox"
-                        className="rounded border-gray-300 dark:border-gray-600 text-violet-600 focus:ring-violet-500"
-                        checked={selectedTransactions.size === dayTransactions.length}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            const newSelected = new Set(selectedTransactions);
-                            dayTransactions.forEach(t => newSelected.add(t.id));
-                            setSelectedTransactions(newSelected);
-                          } else {
-                            const newSelected = new Set(selectedTransactions);
-                            dayTransactions.forEach(t => newSelected.delete(t.id));
-                            setSelectedTransactions(newSelected);
-                          }
-                        }}
-                      />
+                      {/* Remove the checkbox, keep the column width */}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
@@ -278,18 +282,53 @@ export function Transactions() {
             </div>
             <div className="flex items-center space-x-4">
               <button
-                onClick={handleSoftDelete}
+                onClick={() => handleDelete('soft')}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 <ArchiveBoxIcon className="h-4 w-4 mr-2" />
                 Archive Selected
               </button>
               <button
-                onClick={handleHardDelete}
+                onClick={() => handleDelete('hard')}
                 className="inline-flex items-center px-4 py-2 border border-red-300 dark:border-red-500 rounded-md shadow-sm text-sm font-medium text-red-700 dark:text-red-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-gray-700"
               >
                 <TrashIcon className="h-4 w-4 mr-2" />
                 Delete Selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              {deleteType === 'soft' ? 'Archive' : 'Delete'} Transactions?
+            </h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              {deleteType === 'soft' 
+                ? 'Archived transactions can be restored later.' 
+                : 'This action cannot be undone.'}
+            </p>
+            <div className="mt-4 flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleteMutation.isPending}
+                className={`px-4 py-2 text-sm font-medium text-white rounded-md ${
+                  deleteType === 'soft' 
+                    ? 'bg-violet-600 hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600' 
+                    : 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600'
+                } ${deleteMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {deleteMutation.isPending ? 'Processing...' : 'Confirm'}
               </button>
             </div>
           </div>
